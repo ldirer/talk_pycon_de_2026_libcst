@@ -1,0 +1,1871 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+    <title>reveal.js</title>
+
+    <link rel="stylesheet" href="dist/reset.css">
+    <link rel="stylesheet" href="dist/reveal.css">
+    <!--<link rel="stylesheet" href="dist/theme/black.css">-->
+    <link rel="stylesheet" href="dist/theme/solarized.css">
+
+    <!-- Theme used for syntax highlighted code -->
+    <!--    <link rel="stylesheet" href="plugin/highlight/monokai.css">-->
+    <link rel="stylesheet" href="plugin/highlight/a11y-light.css">
+    <style>
+
+      .img-container > img {
+        width: 100%;
+        object-fit: contain;
+        margin: 0;
+      }
+
+      .left-align-text p {
+        text-align: left;
+      }
+
+      /* great css selectors. */
+      p.left-align-text {
+        text-align: left;
+      }
+
+      .lifecycle__image {
+        height: 30vh;
+      }
+
+      .hide-line-numbers .hljs-ln-n {
+        display: none;
+      }
+
+      .smaller-cheeky {
+        font-size: small;
+      }
+
+
+      .wrong-list {
+        position: absolute;
+        position-anchor: --anchor-fixture-snippet;
+        top: anchor(top);
+        font-size: 1.5rem;
+        padding-top: .5rem;
+      }
+
+      .wrong-list li:nth-child(1) {
+        font-size: 1em;
+      }
+
+      .wrong-list li:nth-child(2) {
+        font-size: 0.7em;
+      }
+
+      .wrong-list li:nth-child(3) {
+        font-size: 0.7em;
+      }
+
+      .wrong-list li:nth-child(4) {
+        font-size: 0.7em;
+      }
+
+      .wrong-list li:last-child {
+        font-size: 1em;
+      }
+
+
+      .ld-code-filename {
+        --color-info-muted: hsla(237, 46%, 31%, 0.37);
+        background: var(--color-info-muted);
+        margin: 0 !important;
+        padding: 4px 8px 4px 8px;
+        border-radius: 4px 4px 0 0;
+        font-size: 1rem;
+      }
+
+      .ld-code-filename + pre, .code-comparison pre {
+        margin: 0 !important;
+        width: 100% !important;
+      }
+
+      /* Code comparison container */
+      .code-comparison {
+        display: flex;
+        flex-direction: row;
+        gap: 0.75rem;
+      }
+
+      .code-comparison > div:first-child {
+        margin-left: -4rem;
+      }
+
+      .code-comparison > div {
+        width: 100%;
+      }
+
+      /* Custom highlighting for before/after comparison */
+      .highlight-more-contrast .highlight-line {
+        background-color: rgba(255, 235, 59, 0.4); /* yellow highlight */
+      }
+
+      .highlight-most-contrast tr:not(.highlight-line) {
+        opacity: 0 !important;
+      }
+
+      .code-xlarge {
+        width: 100% !important;
+        height: 100% !important;
+        margin: 0.5rem !important;
+
+        > code {
+          max-height: 500px !important; /* did this bc max at 400px*/
+        }
+
+      }
+
+    </style>
+</head>
+<body>
+<div class="reveal">
+    <section class="slides">
+        <section>
+            <h3>Practical Refactoring with Syntax Trees</h3>
+
+            <div class="img-container">
+                <img class="fragment" data-src="img/reinvention_tree_1.png" style="height: 30vh"/>
+            </div>
+
+            <aside class="notes">
+                Hello everyone
+
+                I'm Laurent.
+
+                We're going to talk about Syntax Trees.
+                And refactoring.
+            </aside>
+        </section>
+
+        <section>
+            <div data-markdown>
+
+            <textarea data-template>
+            ### We're going to talk about
+
+            - What's an Abstract Syntax Tree (AST)?
+            - Refactoring scripts?
+            - Walk through an example (LibCST)
+            - Tactical advice
+            </textarea>
+            </div>
+            <aside class="notes">
+                Before we can go into automated refactoring, we need to have a way to represent our code as data.
+
+                Practical applications: why you should care.
+
+            </aside>
+
+        </section>
+
+        <section class="left-align-text">
+            <div data-markdown>
+            <textarea data-template>
+### Refactoring script (codemod)
+            </textarea>
+            </div>
+            <!--            p for spacing -->
+            <p></p>
+
+            <div class="img-container fragment">
+                <img data-src="img/codemod.svg"/>
+            </div>
+
+            <div class="fragment">
+                <p>
+                    Example:
+                </p>
+
+                <pre>
+            <code class="language-bash" data-trim>
+            #!/usr/bin/env bash
+            sed -i 's/old_function/new_function/g' *.py
+            </code></pre>
+            </div>
+
+
+            <aside class="notes" data-markdown>
+                Let's define refactoring scripts
+
+                Before "example":
+
+                As a spoiler, here's an example of the "endgame", what we're targeting...
+
+
+                When the basic tools work: use the basic tools.
+
+                Use the IDE refactoring, use regexes.
+
+                Now regexes quickly show limits. Multi-line patterns are a pain, they don't "know" about the language,
+                etc.
+                I'm sure I don't need to convince you.
+
+
+                To do better than regex, we are going to use another way to represent the code. Instead of seeing the
+                code as text, we'll see it as a datastructure, a Syntax Tree.
+            </aside>
+        </section>
+
+
+        <section data-auto-animate data-auto-animate-duration="0">
+            <h3>Code as Data</h3>
+            <h4><code>(1 + 2) * 3</code></h4>
+            <div class="fragment" data-markdown>
+            <textarea data-template>
+
+```bash
+        *
+       / \
+      +   3
+     / \
+    1   2
+```
+            </textarea>
+            </div>
+
+
+            <aside class="notes" data-markdown>
+                Let's start with the "Tree" part of Abstract Syntax Tree.
+
+                An expression like this one can be represented as a tree.
+                There's an operator. A left-hand side, right hand side.
+
+                The left-hand side is itself an operation.
+
+                It converts to this tree. The nicer visualizations were all in the tutorial session this morning.
+                If you missed it, you're stuck with my design skills.
+
+
+                DESCRIBE THE TREE.
+
+                - Root node: multiplication operator
+                - left hand side and right hand side as children.
+                - subtree as child for left hand side.
+
+                If you had to turn yourself into a computer, you might evaluate it starting from the bottom: you'd do
+                1 + 2 first - essentially evaluating the left child subtree - then you'd use that to evaluate the root
+                node.
+            </aside>
+        </section>
+
+        <section>
+                <pre>
+                <code class="language-plaintext" data-trim>
+            $ echo "(1 + 2) * 3" > simple.py
+                </code>
+                    </pre>
+            <pre class="fragment">
+                <code class="language-plaintext" data-trim>
+$ python -m ast simple.py
+                </code>
+                </pre>
+            <pre class="fragment"><code class="language-plaintext hide-line-numbers highlight-more-contrast"
+                                        data-line-numbers="|1-1|1-2|3-3|4-10" data-trim>
+Module(
+   body=[
+      Expr(
+         value=BinOp(
+            left=BinOp(
+               left=Constant(value=1),
+               op=Add(),
+               right=Constant(value=2)),
+            op=Mult(),
+            right=Constant(value=3)))],
+   type_ignores=[])
+                </code></pre>
+
+            <aside class="notes" data-markdown>
+                Let's take a look at the Python AST for this expression.
+
+                Now there's more stuff here.
+
+                There's a module. Basically always the top level element.
+
+                The module has a body, which has a list with just one expression.
+
+                There we find a tree similar to the one we had.
+
+                Notice we got that tree from running the `ast` module from the standard library as a script with the
+                `python -m` syntax.
+                You can run that in your terminal on your Python files. It's not particularly readable - we're better at
+                reading source code.
+
+
+                Every node is a Python object, and the children here are attributes on the object.
+
+                There are nodes for FunctionDefinition, Assignment, For loops...
+                You don't need to know them beforehand.
+            </aside>
+
+        </section>
+
+        <section>
+            <h3>What is the Abstract Syntax Tree?</h3>
+            <ul>
+                <li class="fragment">a tree of Python objects that represent the source</li>
+                <li class="fragment">node types represent language constructs: expression, assignment, import, etc.</li>
+                <li class="fragment">used by the Python interpreter to run code</li>
+                <li class="fragment">a representation of the code that we can modify</li>
+            </ul>
+            <aside class="notes" data-markdown>
+                So what is the AST?
+
+                Independent of formatting: no whitespace, no comments. We lost some information, can't reconstruct the
+                original source code exactly.
+
+                A useful representation of the code.
+
+                Useful for some purposes. NOT reading the code.
+            </aside>
+        </section>
+
+        <!-- CODE 1 -->
+        <section data-auto-animate data-auto-animate-duration="0">
+      <pre data-id="ast-basics">
+          <code class="language-plaintext" data-line-numbers="1-1"
+                style="overflow: hidden; scrollbar-gutter: stable both-edges;">>>> import ast
+
+
+
+
+
+
+
+
+</code>
+</pre>
+
+            <aside class="notes" data-markdown>
+                I said the AST was a useful representation. How do we use it?
+                It's part of the standard library
+            </aside>
+        </section>
+
+
+        <!-- CODE 2 -->
+        <section data-auto-animate data-auto-animate-duration="0">
+      <pre data-id="ast-basics">
+          <code class="language-plaintext" data-line-numbers="2-2"
+                style="overflow: hidden; scrollbar-gutter: stable both-edges;">>>> import ast
+>>> source = "(1 + 2) * 3"
+
+
+
+
+
+
+
+</code>
+</pre>
+
+            <aside class="notes" data-markdown>
+                Start with some source code
+            </aside>
+        </section>
+
+
+        <!-- CODE 3 -->
+        <section data-auto-animate data-auto-animate-duration="0">
+      <pre data-id="ast-basics">
+          <code class="language-plaintext" data-line-numbers="3-3"
+                style="overflow: hidden; scrollbar-gutter: stable both-edges;">>>> import ast
+>>> source = "(1 + 2) * 3"
+>>> node = ast.parse(source)
+
+
+
+
+
+
+</code>
+</pre>
+
+            <aside class="notes" data-markdown>
+                ast.parse: turn python code into an AST.
+            </aside>
+        </section>
+
+
+        <!-- CODE 4 -->
+        <section data-auto-animate data-auto-animate-duration="0">
+      <pre data-id="ast-basics">
+          <code class="language-plaintext" data-line-numbers="4-5"
+                style="overflow: hidden; scrollbar-gutter: stable both-edges;">>>> import ast
+>>> source = "(1 + 2) * 3"
+>>> node = ast.parse(source)
+>>> node
+&lt;ast.Module object at 0x7bcbef830370>
+
+
+
+
+</code>
+</pre>
+
+            <aside class="notes" data-markdown>
+                We have a module object. It's a Python object with attributes on it.
+            </aside>
+        </section>
+
+
+        <!-- CODE 5 -->
+        <section data-auto-animate data-auto-animate-duration="0">
+      <pre data-id="ast-basics">
+          <code class="language-plaintext" data-line-numbers="6-7"
+                style="overflow: hidden; scrollbar-gutter: stable both-edges;">>>> import ast
+>>> source = "(1 + 2) * 3"
+>>> node = ast.parse(source)
+>>> node
+&lt;ast.Module object at 0x7bcbef830370>
+>>> ast.dump(node)
+'Module(body=[Expr(value=BinOp(left=BinOp(left=Constant(value=1), op=Add(), right=Constant(value=2)), op=Mult(), right=Constant(value=3)))], type_ignores=[])'
+
+
+</code>
+</pre>
+
+            <aside class="notes" data-markdown>
+                We can dump the tree to a string representation
+
+                This is what the ast module does when invoked on a file.
+            </aside>
+        </section>
+
+        <!-- CODE 6 -->
+        <section data-auto-animate data-auto-animate-duration="0">
+      <pre data-id="ast-basics">
+          <code class="language-plaintext hide-line-numbers" data-line-numbers="8-9"
+                style="overflow: hidden; scrollbar-gutter: stable both-edges;">>>> import ast
+>>> source = "(1 + 2) * 3"
+>>> node = ast.parse(source)
+>>> node
+&lt;ast.Module object at 0x7bcbef830370>
+>>> ast.dump(node)
+'Module(body=[Expr(value=BinOp(left=BinOp(left=Constant(value=1), op=Add(), right=Constant(value=2)), op=Mult(), right=Constant(value=3)))], type_ignores=[])'
+>>> ast.unparse(node)
+'(1 + 2) * 3'
+</code>
+</pre>
+
+            <aside class="notes" data-markdown>
+                We can also convert the tree back to code.
+
+                Now Python does not need that because it can execute the AST.
+
+                If we modify the AST, we can give it to Python and it can execute it.
+
+
+                But this is very convenient to debug (new in Python 3.9).
+            </aside>
+        </section>
+
+
+        <section data-auto-animate data-auto-animate-duration="0">
+            <div>
+                <h3>Anatomy of a refactoring script</h3>
+
+                <div class="img-container">
+                    <img class="fragment" data-src="img/codemod_structure.svg"/>
+                </div>
+
+                <div class="fragment">
+                <pre data-id="codemod-steps">
+            <code class="language-python hide-line-numbers" data-trim>
+# read, parse, transform, write
+source_code = read(file_path)
+
+
+
+                </code>
+                </pre>
+                </div>
+            </div>
+
+            <aside class="notes">
+                Now the topic of the talk is refactoring.
+
+                So let's see where syntax trees fit in.
+            </aside>
+        </section>
+
+        <section data-auto-animate data-auto-animate-duration="0">
+            <div>
+                <h3>Anatomy of a refactoring script</h3>
+
+                <div class="img-container">
+                    <img data-src="img/codemod_structure.svg"/>
+                </div>
+
+                <div>
+                <pre data-id="codemod-steps">
+            <code class="language-python hide-line-numbers" data-trim>
+# read, parse, transform, write
+source_code = read(file_path)
+tree = parse(source_code)
+
+
+                </code>
+                </pre>
+                </div>
+            </div>
+        </section>
+
+        <section data-auto-animate data-auto-animate-duration="0">
+            <div>
+                <h3>Anatomy of a refactoring script</h3>
+
+                <div class="img-container">
+                    <img data-src="img/codemod_structure.svg"/>
+                </div>
+
+                <div>
+                <pre data-id="codemod-steps">
+            <code class="language-python hide-line-numbers" data-trim>
+# read, parse, transform, write
+source_code = read(file_path)
+tree = parse(source_code)
+transformed_tree = transform_tree(tree)
+
+                </code>
+                </pre>
+                </div>
+            </div>
+        </section>
+
+        <section data-auto-animate data-auto-animate-duration="0">
+            <div>
+                <h3>Anatomy of a refactoring script</h3>
+
+                <div class="img-container">
+                    <img data-src="img/codemod_structure.svg"/>
+                </div>
+
+                <div>
+                <pre data-id="codemod-steps">
+            <code class="language-python hide-line-numbers" data-trim>
+# read, parse, transform, write
+source_code = read(file_path)
+tree = parse(source_code)
+transformed_tree = transform_tree(tree)
+write(transformed_tree.unparse(), file_path)
+                </code>
+                </pre>
+                </div>
+            </div>
+        </section>
+
+        <section data-auto-animate data-auto-animate-duration="0.5">
+            <div>
+                <h3>Anatomy of a refactoring script</h3>
+
+                <div class="img-container">
+                    <img data-src="img/codemod_structure.svg"/>
+                </div>
+
+                <div>
+                <pre data-id="codemod-steps" class="highlight-more-contrast">
+            <code class="language-python hide-line-numbers" data-trim data-line-numbers="4">
+# read, parse, transform, write
+source_code = read(file_path)
+tree = parse(source_code)
+transformed_tree = transform_tree(tree)
+write(transformed_tree.unparse(), file_path)
+                </code>
+                </pre>
+                </div>
+            </div>
+        </section>
+
+        <section>
+            <h3>Transforming the AST</h3>
+
+            <ul>
+                <li class="fragment">Utilities: <code>ast.NodeVisitor, ast.NodeTransformer</code></li>
+                <li class="fragment">Depth-first traversal</li>
+                <li class="fragment">Define <code>visit_[NodeType]</code> methods</li>
+            </ul>
+
+        </section>
+
+        <section>
+            <h3>ast.NodeTransformer</h3>
+
+            <div class="code-comparison fragment">
+                <div>
+                    <p class="ld-code-filename"><code>before.py</code></p>
+                    <pre><code class="language-python" data-trim>b = a + 1</code></pre>
+                </div>
+                <div>
+                    <p class="ld-code-filename"><code>after.py</code></p>
+                    <pre><code class="language-python" data-trim>data['b'] = data['a'] + 1</code></pre>
+                </div>
+            </div>
+
+            <div class="code-comparison fragment">
+                <div>
+                    <pre><code class="language-text hide-line-numbers highlight-more-contrast" data-trim
+                               data-line-numbers="|4-4,8-8">
+Assign(
+  targets=[
+    AssignTarget(
+      target=Name(value='b')
+    )
+  ],
+  value=BinaryOperation(
+    left=Name(value='a'),
+    operator=Add(),
+    right=Integer(value='1')
+  )
+)
+                    </code></pre>
+                </div>
+                <div>
+                    <pre><code class="language-text  hide-line-numbers highlight-more-contrast" data-trim
+                               data-line-numbers="|4-15|19-28">
+Assign(
+  targets=[
+    AssignTarget(
+      target=Subscript(
+        value=Name(value='data'),
+        slice=[
+          SubscriptElement(
+            slice=Index(
+              value=SimpleString(
+                        value="'b'"
+                        ),
+            )
+          )
+        ],
+      )
+    )
+  ],
+  value=BinaryOperation(
+    left=Subscript(
+      value=Name(value='data'),
+      slice=[
+        SubscriptElement(
+          slice=Index(
+            value=SimpleString(
+                        value="'a'"
+                        ),
+          )
+        )
+      ]
+    ),
+    operator=Add(),
+    right=Integer(value='1')
+  )
+)
+                    </code></pre>
+                </div>
+
+            </div>
+
+        </section>
+
+        <section>
+            <h3>ast.NodeTransformer</h3>
+
+            <div class="code-comparison fragment">
+                <div>
+                    <p class="ld-code-filename"><code>before.py</code></p>
+                    <pre><code class="language-python" data-trim>b = a + 1</code></pre>
+                </div>
+                <div>
+                    <p class="ld-code-filename"><code>after.py</code></p>
+                    <pre><code class="language-python" data-trim>data['b'] = data['a'] + 1</code></pre>
+                </div>
+            </div>
+            <pre class="fragment">
+            <code class="language-python hide-line-numbers highlight-most-contrast" data-trim
+                  data-line-numbers="1-1|1-3|1-8">
+class RewriteName(NodeTransformer):
+
+    def visit_Name(self, node):
+        return Subscript(
+            value=Name(id='data', ctx=Load()),
+            slice=Constant(value=node.id),
+            ctx=node.ctx
+        )
+</code>
+            </pre>
+
+            <aside class="notes" data-markdown>
+                Now say we want to modify the AST.
+                Let's look at this example from the docs.
+
+                ast module gives us The NodeTransformer class
+                We can use it to transform an AST.
+
+                This is when we have a piece of code. And we want to modify it, as if rewriting it on-the-fly.
+
+                NodeTransformer It follows the "visitor" programming pattern, meaning we define the methods as
+                `visit_NodeType` and they
+                will be called on relevant nodes as the tree is visited.
+
+                The way you'd do this is you'd print both trees: before and after.
+                Then you know how to change
+
+
+                Subscript node means bracket access. The slice is the index or the key we use inside the brackets.
+
+                Replaces all variables like 'foo' with 'data["foo"]'.
+
+
+                The part we're interested in is the NodeTransformer. This is a pattern that can be used to modify the
+                AST.
+            </aside>
+
+        </section>
+
+        <section>
+            <h3>Python AST for refactoring</h3>
+            <div>
+                <div class="code-comparison">
+                    <div>
+                        <p class="ld-code-filename">exhibit A</p>
+                        <pre><code class="language-python" data-trim>
+                        1 + (2 * 3)  # IP-protected formula
+                    </code></pre>
+                    </div>
+                    <div>
+                        <p class="ld-code-filename">exhibit B</p>
+                        <pre><code class="language-python" data-trim>1 + 2 * 3</code></pre>
+                    </div>
+                </div>
+
+                <p class="fragment">Same AST <span class="fragment">😱</span></p>
+            </div>
+
+            <aside class="notes">
+                Same AST: if we parse the left, unparse it: we get what's on the right.
+
+                Lost comment, lost parentheses.
+                Because these parentheses are decorative. Such parentheses (and comments) are for humans.
+
+                The AST is a format for the machine :).
+            </aside>
+        </section>
+        <section>
+            <h3>Python AST for refactoring: oh no</h3>
+            <div>
+                <ul>
+                    <li class="fragment">does not preserve formatting</li>
+                    <li class="fragment">does not preserve comments</li>
+                </ul>
+
+                <p class="smaller-cheeky fragment">
+                    Good if your codebase is not formatted and comments are overrated anyway.
+                </p>
+
+            </div>
+            <aside class="notes" data-markdown>
+                Some tools still use the AST for refactoring, like pyupgrade and django-upgrade.
+
+                Two very successful tools, they use the AST to identify the patterns they want to change.
+                The rewriting is done differently, at a lower level.
+
+
+                MAYBE:
+
+                I'll mention it briefly: AST Transforms are still useful outside of refactoring scripts.
+                When you don't want to change the code on disk, but you want to make it behave as if it were different
+                code.
+                You can parse the code into a tree, transform the tree, and pass that tree back to Python for execution.
+
+                There are a few niche applications, pytest assert rewriting.
+            </aside>
+        </section>
+
+        <section>
+            <h3>Concrete Syntax Trees</h3>
+
+
+            <pre><code class="language-python" data-trim>
+            (1 + 2) * 3   # comment
+            </code></pre>
+            <pre class="fragment">
+<code class="language-text hide-line-numbers highlight-more-contrast" data-trim style="font-size: 0.8em;"
+      data-line-numbers="|3-8,12-14|9-10|17-20">
+SimpleStatementLine(
+  body=[
+    Expr(
+      value=BinaryOperation(
+        left=BinaryOperation(
+          left=Integer(value='1'),
+          operator=Add(),
+          right=Integer(value='2'),
+          lpar=[LeftParen()],
+          rpar=[RightParen()],
+        ),
+        operator=Multiply(),
+        right=Integer(value='3'),
+      ),
+    ),
+  ],
+  trailing_whitespace=TrailingWhitespace(
+    whitespace=SimpleWhitespace(value='   '),
+    comment=Comment(value='# comment'),
+  ),
+)
+                </code>
+            </pre>
+
+            <aside class="notes">
+                This is not even the same example as on previous slide.
+
+                But close enough!
+
+
+            </aside>
+        </section>
+
+        <section><h3>Concrete Syntax Trees</h3>
+
+            <ul>
+                <li class="fragment">Cousins of AST. Sometimes called Parse Trees.</li>
+                <li class="fragment">Preserve whitespace, parentheses, comments...</li>
+                <li class="fragment">Allow 'round-tripping'</li>
+                <li class="fragment">Great fit for refactoring scripts</li>
+                <li class="fragment">We do not <span style="font-style: italic">have</span> to care about whitespace
+                </li>
+            </ul>
+
+            <aside class="notes">
+                They are Cousins of AST.
+
+                Sometimes they are called Parse Trees.
+                Sometimes... they are also called ASTs. The frontier is a little blurry, but basically...
+
+
+                Different trees: the node types and structure won't be exactly the same.
+
+                But the mental model transfers.
+
+
+                We don't have to care about whitespace, and in fact, we will not.
+
+                We also won't really have to care about comments in our refactoring scripts.
+                We do care that they are preserved, but that is done essentially without us having to do anything
+
+                If you put all the formatting information aside, it looks similar to the AST.
+
+                Let's look at some examples now to get a feel of the tree structure and see different types of nodes.
+            </aside>
+        </section>
+
+        <section data-auto-animate data-auto-animate-duration="0">
+            <h3>Concrete Syntax Trees</h3>
+
+            <div>
+                <pre data-id="import-code" class="hide-line-numbers">
+                    <code class="language-python" data-line-numbers data-trim>
+import numpy
+                    </code>
+                </pre>
+
+                <pre data-id="import-tree" class="hide-line-numbers">
+                    <code class="language-text highlight-more-contrast"
+                          data-line-numbers="|1-1|2-2|3-7|">Import(
+  names=[
+    ImportAlias(
+      name=Name(
+        value='numpy'
+      )
+    )
+  ]
+)
+
+
+
+
+
+                    </code>
+                </pre>
+            </div>
+
+            <aside class="notes">
+
+                View is slightly simplified, default values are not displayed, etc.
+                But that's the gist of it.
+
+            </aside>
+        </section>
+
+        <section data-auto-animate data-auto-animate-duration="0">
+            <h3>Concrete Syntax Trees</h3>
+
+            <div>
+                <pre data-id="import-code" class="hide-line-numbers">
+                    <code class="language-python" data-trim data-line-numbers="1">
+import numpy as np
+                    </code>
+                </pre>
+
+                <pre data-id="import-tree" class="highlight-more-contrast hide-line-numbers">
+                    <code class="language-text" data-trim data-line-numbers="7-12">
+Import(
+  names=[
+    ImportAlias(
+      name=Name(
+        value='numpy'
+      ),
+      asname=AsName(
+        name=Name(
+          value='np'
+        )
+      )
+    )
+  ]
+)
+                    </code>
+                </pre>
+            </div>
+
+            <aside class="notes">
+
+            </aside>
+        </section>
+
+        <section data-auto-animate data-auto-animate-duration="0">
+            <h3>Concrete Syntax Trees</h3>
+
+            <div>
+                <pre data-id="assign-code" class="hide-line-numbers">
+                    <code class="language-python" data-line-numbers data-trim>
+a = 'Hello'
+                    </code>
+                </pre>
+
+                <pre data-id="assign-tree" class="hide-line-numbers">
+                    <code class="language-text" data-line-numbers>Assign(
+  targets=[
+    AssignTarget(
+      target=Name(value='a')
+    )
+  ],
+  value=SimpleString(value="'Hello'")
+)
+
+
+
+
+
+
+
+                    </code>
+                </pre>
+            </div>
+
+            <aside class="notes">
+
+            </aside>
+        </section>
+
+        <section data-auto-animate data-auto-animate-duration="0.5">
+            <h3>Concrete Syntax Trees</h3>
+
+            <div>
+                <pre data-id="assign-code" class="hide-line-numbers">
+                    <code class="language-python" data-trim data-line-numbers="1">
+a = f('Hello')
+                    </code>
+                </pre>
+
+                <pre data-id="assign-tree" class="highlight-more-contrast hide-line-numbers">
+                    <code class="language-text" data-trim data-line-numbers="7-14">
+Assign(
+  targets=[
+    AssignTarget(
+      target=Name(value='a')
+    )
+  ],
+  value=Call(
+    func=Name(value='f'),
+    args=[
+      Arg(
+        value=SimpleString(value="'Hello'")
+      )
+    ]
+  )
+)
+                    </code>
+                </pre>
+            </div>
+
+            <aside class="notes">
+
+            </aside>
+        </section>
+
+        <section>
+            <h3>Example: rename pytest fixtures</h3>
+            <div>
+                <pre class="fragment" style="anchor-name: --anchor-fixture-snippet">
+                    <code class="language-python" data-trim>
+                    @pytest.fixture
+                    def test_user():
+                        return {"name": "test"}
+
+                    def test_login(test_user):
+                        ...
+                </code>
+                </pre>
+                <p class="fragment">What's wrong with this?</p>
+            </div>
+            <ul class="wrong-list">
+                <li class="fragment">Naming convention</li>
+                <li class="fragment">This is wrong</li>
+                <li class="fragment">Why would you</li>
+                <li class="fragment">Hurts my feelings</li>
+                <li class="fragment">Can cause crashes with some <code>pytest</code> versions</li>
+            </ul>
+
+            <p class="fragment">Hundreds of fixtures like this one.</p>
+
+            <aside class="notes">
+                Right after showing the snippet:
+
+                EXPLAIN PYTEST FIXTURES. MAGIC PEOPLE MIGHT NOT KNOW.
+                Mention they can be in fixture arguments too (fixtures reference fixtures).
+
+                So if you're familiar with pytest you might be fuming at the sight of this snippet, because...
+                Naming convention!
+
+
+                It can cause crashes!
+                Yeeeeees
+
+                Now we have an excuse to do something about it!
+
+                If there are hundreds of fixtures like this, the IDE won't cut it.
+                It helps you rename one fixture: you rename it, it renames all the usages of the fixture.
+                Assuming you're using the correct IDE, but let's not get into it.
+
+
+            </aside>
+
+
+        </section>
+
+        <section>
+            <h3>What do we want?</h3>
+
+            <div class="code-comparison">
+                <div>
+                    <p class="ld-code-filename"><code>before.py</code></p>
+
+                    <pre class="highlight-more-contrast"><code class="language-python" data-trim
+                                                               data-line-numbers="|4,7,8">
+
+                    import pytest
+
+                    @pytest.fixture
+                    def test_user():
+                        return {"name": "test"}
+
+                    def test_login(test_user):
+                        assert test_user["name"] == "test"
+      </code></pre>
+                </div>
+                <div>
+                    <p class="ld-code-filename"><code>after.py</code></p>
+                    <pre class="highlight-more-contrast"><code class="language-python" data-trim
+                                                               data-line-numbers="|4,7,8">
+import pytest
+
+@pytest.fixture
+def user_fixture():
+    return {"name": "test"}
+
+def test_login(user_fixture):
+    assert user_fixture["name"] == "test"
+      </code></pre>
+                </div>
+            </div>
+
+            <p class="fragment">
+                Change this, on hundreds of fixtures.
+            </p>
+
+            <aside class="notes">
+                I like to start with before/after snippets.
+                What change do we want to make?
+
+                Writing the snippets (collecting from your codebase) helps understand edge cases/if what we want to
+                achieve is well-defined.
+
+                These should become test cases.
+
+                It also helps to think about what needs to be done: what does it take to do this transform?
+
+                First identify fixtures
+                Then rename them... everywhere where they are used.
+            </aside>
+        </section>
+
+        <section>
+            <h3>LibCST API</h3>
+
+            <ul>
+                <li class="fragment"><code>CSTTransformer</code> ~= <code>ast.NodeTransformer</code></li>
+                <li class="fragment">Define methods:
+                    <ul>
+                        <li><code>visit_[NodeType]</code></li>
+                        <li><code>leave_[NodeType]</code></li>
+                    </ul>
+            </ul>
+
+            <aside class="notes">
+                We're going to use LibCST to transform our source syntax tree into the target syntax tree.
+
+                So, to be clear: the CST and the AST are not the same trees.
+                We've said that the CST has formatting information: commas, parentheses, whitespace...
+
+                But also the nodes might have different names and structure.
+
+                At the end of the day they're close enough though, the mental model persists.
+
+                not mentioned because you don't need to know the node types beforehand to write a transformer.
+                I don't know them
+                Just look them up as you need them.
+            </aside>
+        </section>
+
+        <section>
+
+            <pre><code class="language-python" data-trim>
+            import libcst as cst
+
+
+            class Transformer(cst.CSTTransformer):
+                def visit_FunctionDef(self, node):
+                    ...
+
+                def leave_Name(self, original_node, updated_node):
+                    ...
+            </code></pre>
+
+        </section>
+
+        <section>
+
+            <pre><code class="language-python" data-trim>
+                class Transformer(cst.CSTTransformer):
+
+                    def __init__(self):
+                        self.renames: dict[str, str] = {}
+
+                    def visit_FunctionDef(self, node):
+                        """Collect fixtures that need to be renamed."""
+                        if is_pytest_fixture(node) and should_rename(node):
+                            old_name = node.name.value
+                            self.renames[old_name] = generate_new_name(old_name)
+                        return True  # Continue visiting children
+            </code></pre>
+
+            <aside class="notes">
+                A bit of wishful programming. is_pytest_fixture, let's pretend we have that.
+            </aside>
+
+        </section>
+
+        <section>
+            <pre>
+                <code class="language-python" data-trim>
+                class Transformer(cst.CSTTransformer):
+
+                    def leave_Name(self, original_node, updated_node):
+                        """Update variables that match renamed fixtures."""
+                        name = updated_node.value
+                        if name in self.renames:
+                            new_name = self.renames[name]
+                            return updated_node.with_changes(value=new_name)
+                        return updated_node
+                </code>
+            </pre>
+        </section>
+
+        <section data-auto-animate data-auto-animate-duration="0">
+
+            <h3>Matching fixtures</h3>
+
+            <div>
+
+            <pre data-id="fixture-code" class="hide-line-numbers">
+                <code class="language-python" data-line-numbers>
+def test_user():
+    ...
+                </code>
+            </pre>
+
+                <pre data-id="fixture-tree" class="hide-line-numbers">
+        <code class="language-text"
+              data-line-numbers>FunctionDef(
+  name=Name(value='test_user'),
+  params=Parameters(),
+  body=SimpleStatementSuite(body=[
+      Expr(value=Ellipsis()),
+    ]),
+  decorators=[],
+)
+
+
+
+
+
+
+
+                    </code>
+            </pre>
+            </div>
+
+            <aside class="notes">
+
+            </aside>
+
+
+        </section>
+
+        <section data-auto-animate data-auto-animate-duration="0.5">
+
+            <h3>Matching fixtures</h3>
+
+            <div>
+
+            <pre data-id="fixture-code" class="highlight-more-contrast hide-line-numbers">
+                <code class="language-python" data-trim data-line-numbers="1">
+                    @pytest.fixture
+                    def test_user():
+                        ...
+                </code>
+            </pre>
+
+                <pre data-id="fixture-tree" class="highlight-more-contrast hide-line-numbers">
+        <code class="language-text" data-trim data-line-numbers="7-14">
+FunctionDef(
+  name=Name(value='test_user'),
+  params=Parameters(),
+  body=SimpleStatementSuite(body=[
+      Expr(value=Ellipsis()),
+    ]),
+  decorators=[
+    Decorator(
+      decorator=Attribute(
+        value=Name(value='pytest'),
+        attr=Name(value='fixture'),
+      ),
+    ),
+  ],
+)
+                    </code>
+            </pre>
+            </div>
+
+            <aside class="notes">
+
+            </aside>
+
+
+        </section>
+
+        <section>
+            <h3>Matching fixtures</h3>
+
+            <pre><code class="language-python" data-trim>
+def is_pytest_fixture(node: cst.FunctionDef) -> bool:
+    for decorator in node.decorators:
+        match decorator.decorator:
+            # Handle @fixture
+            case cst.Name(value="fixture"):
+                return True
+            # Handle @pytest.fixture
+            case cst.Attribute(value=cst.Name(value="pytest"),
+                               attr=cst.Name(value="fixture")):
+                return True
+    return False
+            </code></pre>
+
+
+        </section>
+
+        <section>
+            <pre class="code-xlarge"><code class="language-python" data-trim>
+class Transformer(cst.CSTTransformer):
+    def __init__(self):
+        self.renames: dict[str, str] = {}
+
+    def visit_FunctionDef(self, node) -> bool:
+        """Collect fixtures that need to be renamed."""
+        if is_pytest_fixture(node) and should_rename(node):
+            old_name = node.name.value
+            self.renames[old_name] = generate_new_name(old_name)
+        return True  # Continue visiting children
+
+    def leave_Name(self, original_node, updated_node):
+        """Update variables that match renamed fixtures."""
+        name = updated_node.value
+        if name in self.renames:
+            new_name = self.renames[name]
+            return updated_node.with_changes(value=new_name)
+        return updated_node
+
+
+            </code></pre>
+
+            <aside class="notes">
+                Recap. That's basically all there is. And we can rename 100 or 1000 fixtures that are prefixed with
+                `test_`.
+            </aside>
+        </section>
+
+        <section>
+            <h3>Running codemods</h3>
+            <ol>
+                <li class="fragment">Clean git working tree</li>
+                <li class="fragment">Run codemod script</li>
+                <li class="fragment">Run formatters/linters</li>
+                <li class="fragment">Commit just this</li>
+            </ol>
+
+            <p class="fragment" style="font-weight: bold">
+                Automated changes = isolated commits
+            </p>
+            <aside class="notes">
+                So this is the stuff I talk about at parties.
+
+                Workflow to run codemods!
+
+                1. Make sure git status says everything is clean. You don't want unstaged changes
+                2. Run the codemod. If something went wrong, just collect a couple examples and git reset --hard
+                3. Run formatters/linters (I mention this as a separate step)
+                Run it as part of your script, or I like precommit for that
+                4. Commit _just that_
+
+
+                This is a bit of boring advice but I'd feel bad not mentioning it.
+                The rule:
+                This is important! You will thank yourself if you need to rebase on top of a lot of changes.
+
+                Instead of dealing with conflicts it's often easier to drop the automated changes and re-run the script.
+
+            </aside>
+
+        </section>
+
+        <section>
+
+            <h3>Writing codemods</h3>
+
+            <ul>
+                <li class="fragment">Maintainability? <span class="fragment">No</span></li>
+                <li class="fragment">90%? Claim success</li>
+                <li class="fragment">Leave formatting to tooling: more fun</li>
+                <li class="fragment">Test Driven Development</li>
+            </ul>
+
+            <aside class="notes">
+                So advice on running codemods: be rigorous. Follow the method, atomic commits... BORING.
+
+                Now what do we care about when we're _writing_ codemods?
+
+                **PRESS**
+                this doesn't always apply, if you're a library author writing a codemod so all your users can upgrade,
+                you'll need a higher bar.
+                You probably can't assume your users all have a formatter like black or ruff.
+
+
+                **PRESS**
+                if the script gets you 90% of the way there, that might be enough for your use case!
+                It's fine to do things manually too, it's just another tool in the toolbox.
+
+                As long as you keep automated changes and manual changes in separate git commits.
+
+                I prefer to give control of formatting to a tool like black or ruff. Then the refactor script can mess
+                everything up - there's no need to manage whitespaces so the code still looks good after applying the
+                script.
+                Similar for things like duplicate or unused imports. If you have tooling doing that, your refactoring
+                scripts can add 3 times the same import.
+
+                Unix philosophy of combining small tools that do one thing well.
+
+                All in all: If you're targeting one codebase, for a one-off change: that's a bit liberating :).
+
+                Also, you might notice these bullet points are really where AI Agents strive.
+            </aside>
+        </section>
+
+
+        <section>
+            <section>
+                <h3>Example: limitations (many)</h3>
+
+                <ul>
+                    <li class="fragment">Same-named local variables</li>
+                    <li class="fragment">Defined "after use"</li>
+                    <li class="fragment">Fixtures across files</li>
+                    <li class="fragment">Matching not the most robust (ex: pytest alias)</li>
+                </ul>
+                <aside class="notes">
+                    If we go back to our example, I followed my own advice about 'claiming success' at 90%.
+
+                    To be fair: it was an actual success on the codebase I did that. And that's all it takes.
+                    But let's look at where it falls short.
+
+                    "after use" in quotes because it's really "after use" in the text or in the tree.
+                    Not in the execution.
+
+                    So many limitations to this script.
+
+                    BUT SOMETIMES. ITS GOOD ENOUGH!
+                </aside>
+
+            </section>
+
+            <section>
+                <h3>Example: Defined "after use"</h3>
+
+                <div class="code-comparison">
+                    <div>
+                        <p class="ld-code-filename"><code>before.py</code></p>
+                        <pre><code class="language-python" data-trim>
+def test_function(test_user):
+    assert test_user["name"] == "test"
+
+
+@pytest.fixture
+def test_user():
+    return {"name": "test"}
+                    </code></pre>
+                    </div>
+                    <div class="failing-test">
+                        <p class="ld-code-filename"><code>after.py</code></p>
+                        <pre><code class="language-python" data-trim>
+def test_function(user_fixture):
+    assert user_fixture["name"] == "test"
+
+
+@pytest.fixture
+def user_fixture():
+    return {"name": "test"}
+                    </code></pre>
+                    </div>
+                </div>
+
+            </section>
+
+            <section>
+                <h3>Example: same-name variables</h3>
+
+                <div class="code-comparison">
+                    <div>
+                        <p class="ld-code-filename"><code>before.py</code></p>
+                        <pre><code class="language-python" data-trim>
+@pytest.fixture
+def test_user():
+    return {"name": "test"}
+
+def test_another_function():
+    test_user = {"name": "local"}
+    assert test_user["name"] == "local"
+                        </code></pre>
+                    </div>
+                    <div class="failing-test">
+                        <p class="ld-code-filename"><code>after.py</code></p>
+                        <pre><code class="language-python" data-trim>
+@pytest.fixture
+def user_fixture():
+    return {"name": "test"}
+
+def test_another_function():
+    test_user = {"name": "local"}
+    assert test_user["name"] == "local"
+                        </code></pre>
+                    </div>
+                </div>
+
+            </section>
+
+        </section>
+        <section>
+            <h3>Going further with LibCST</h3>
+            <ul>
+                <li class="fragment">State across files: multiple passes [Metadata APIs]</li>
+                <li class="fragment">Variable scope management [<code>ScopeProvider</code>]</li>
+                <li class="fragment">Pattern-matching nodes [<code>matchers</code>]</li>
+            </ul>
+
+            <aside class="notes">
+                When needed LibCST gives you tools to go further.
+                But again, I want to stress that what works for you, is good enough.
+
+                Pattern-matching nodes: matchers are convenient to avoid a soup of if statements.
+                The `match` python statement can also help.
+
+                More robust matching in the previous slide: this could use the QualifiedName metadata provider. Would
+                simplify it.
+
+                AI will default to the if soup.
+            </aside>
+        </section>
+
+        <section>
+        <section>
+            <h3>Automated refactoring: getting started</h3>
+
+            <ul>
+                <li class="fragment">First step: use existing tools!</li>
+                <ul>
+                    <li class="fragment">
+                        <code>django-upgrade, pyupgrade</code>
+                    </li>
+                    <li class="fragment">
+                        <code>npx @next/codemod upgrade canary</code>
+                    </li>
+                </ul>
+                <li class="fragment">Start asking "would this be doable?"</li>
+            </ul>
+
+            <aside class="notes" data-markdown>
+                This is the main point I'm trying to make so I want to reinforce that.
+
+                Understanding the concept is great.
+                Look for existing tools! If you know it's possible, you know something can exist.
+                So maybe you find django-upgrade and you're set.
+
+                Would this be doable? or Why am I even doing this manually?
+                Defer all repetitive tasks to your enthusiastic coworker. They can write a script!
+
+                It's more fun. And it helps understanding the tools we use better, since syntax trees are at the heart
+                of a lot of devtools.
+            </aside>
+
+
+        </section>
+
+        <section>
+            <h3>Ideas of refactoring scripts</h3>
+
+            <p>Unittest to pytest</p>
+
+            <div class="code-comparison">
+                <div class="fragment">
+                    <p class="ld-code-filename"><code>before.py</code></p>
+                    <pre><code class="language-python" data-trim>
+class TestAssertNotEqual(TestCase):
+
+    def test_you(self):
+        self.assertNotEqual(abc, 'xxx')
+                    </code></pre>
+                </div>
+                <div class="fragment">
+                    <p class="ld-code-filename"><code>after.py</code></p>
+                    <pre><code class="language-python">def test_you(self):
+    assert abc != 'xxx'
+
+                    </code></pre>
+                </div>
+            </div>
+
+            <p class="fragment">
+            From <a href="https://github.com/pytest-dev/unittest2pytest/tree/main">https://github.com/pytest-dev/unittest2pytest/tree/main</a>
+            </p>
+
+            <aside class="notes">
+                This is a test from a popular repository that did not use libcst. The codemod is not compatible with recent python versions. It's a good candidate for a libcst port.
+            </aside>
+
+        </section>
+
+
+        <section>
+
+            <h3>Ideas of refactoring scripts</h3>
+
+            <p>Rewrite <code>apps.get_model</code> (Django) to local imports</p>
+
+            <div class="code-comparison">
+                <div class="fragment">
+                    <p class="ld-code-filename"><code>before.py</code></p>
+                    <pre><code class="language-python" data-trim>
+Message = apps.get_model("Chat", "Message")
+                    </code></pre>
+                </div>
+                <div class="fragment">
+                    <p class="ld-code-filename"><code>after.py</code></p>
+                    <pre><code class="language-python" data-trim>
+from chat.models import Message
+                    </code></pre>
+                </div>
+            </div>
+
+        </section>
+
+        <section>
+            <h3>Ideas of refactoring scripts</h3>
+
+            <p>Cleanup feature flags automatically</p>
+
+            <div class="code-comparison">
+                <div class="fragment">
+                    <p class="ld-code-filename"><code>before.js</code></p>
+                    <pre><code class="language-javascript" data-trim>
+const data = featureFlag('new-release')
+                ? {name: 'Product'}
+                : undefined;
+                    </code></pre>
+                </div>
+                <div class="fragment">
+                    <p class="ld-code-filename"><code>after.js</code></p>
+                    <pre><code class="language-javascript" data-trim>
+const data = { name: 'Product' };
+                    </code></pre>
+                </div>
+            </div>
+
+            <p style="font-size: 0.8em; margin-top: 1rem;">
+                Blog post: <a href="https://martinfowler.com/articles/codemods-api-refactoring.html">https://martinfowler.com/articles/codemods-api-refactoring.html</a>
+            </p>
+        </section>
+
+        </section>
+
+
+
+        <section>
+            <h3>The elephant</h3>
+            <div class="img-container">
+                <img style="height: 60vh" src="img/ai_elephant.png"/>
+            </div>
+            <aside class="notes">
+
+                Time to address it. It's in the room. The elephant is AI of course.
+
+                Why would you write a LibCST script when you can just ask AI to "change this, do that"?
+            </aside>
+        </section>
+
+        <section>
+            <h3>LibCST vs the Claudes</h3>
+            <ul>
+                <li class="fragment">Deterministic vs faith-based</li>
+                <li class="fragment">Easy rebasing vs another 30 minutes of GPU time</li>
+                <li class="fragment">Claude can write the LibCST transformer</li>
+            </ul>
+            <aside class="notes">
+                faith-based that you don't get fancy-creative Claude for some files.
+                I'll say it used to not work well because it consumed too much context.
+                But today most tooling will use 'sub agents' automatically, split the work between them.
+                So context is not bloated and they don't become end-of-week Claude.
+
+                Before: Claude can write the LibCST transformer.
+
+                ALSO... IF YOU INSIST...
+            </aside>
+
+        </section>
+
+        <section>
+            <h3>LibCST vs the Claudes</h3>
+            <p class="fragment left-align-text">
+                Clear and obvious conclusion:
+            </p>
+            <ul>
+                <li class="fragment">AI really good in many cases :)</li>
+                <li class="fragment">Codemods feel better for some changes</li>
+                <li class="fragment">Large codebases, reusability: push towards codemods</li>
+            </ul>
+
+
+            <aside class="notes">
+
+            </aside>
+        </section>
+
+        <section>
+            <div data-markdown>
+                <textarea data-template>
+                ## Conclusion
+                </textarea>
+            </div>
+
+            <aside class="notes">
+                The Abstract Syntax Tree is one of these things that might sound mysterious the first time you hear it.
+
+                But when you look at it, it's actually quite approachable, and gives you a lot of power for things like
+                automated refactoring.
+
+                You won't necessarily use it every day. But knowing it powers some of your tools, and it's there if you
+                need it. Next time you have a very boring migration to make on your entire codebase, you might be able
+                to write a migration tool to automate part of
+                it.
+                Or find one on the internet :).
+
+            </aside>
+        </section>
+
+        <section>
+            <h3>Resources</h3>
+
+            <ul>
+                <li>Repo with the pytest codemod: <a href="https://github.com/ldirer/codemod-rename-pytest-fixtures">https://github.com/ldirer/codemod-rename-pytest-fixtures</a></li>
+                <li>Explore ASTs in the browser: <a href="https://ast-explorer.dev/">https://ast-explorer.dev/</a></li>
+                <li>LibCST example, with blog post: <a href="https://github.com/seatgeek/tornado-async-transformer">https://github.com/seatgeek/tornado-async-transformer</a>
+                </li>
+                <li>Template inspired by above: <a href="https://github.com/ldirer/libcst-codemod-template">https://github.com/ldirer/libcst-codemod-template</a>
+                </li>
+                <li>Great blog post (mentioned in feature toggles example): <a href="https://martinfowler.com/articles/codemods-api-refactoring.html">https://martinfowler.com/articles/codemods-api-refactoring.html</a></li>
+            </ul>
+
+            <aside class="notes">
+                for reference in the slides
+            </aside>
+        </section>
+
+        <section>
+            <div data-markdown>
+                <textarea data-template>
+                ### About me
+
+                - https://github.com/ldirer/talk-pycon-de-2026-libcst
+                - https://ldirer.com/blog
+                - I help teams ship faster through quality.
+                </textarea>
+            </div>
+
+            <aside class="notes">
+            </aside>
+
+        </section>
+
+        <section>
+            <h3>Thank you</h3>
+
+            <div class="img-container">
+                <img class="fragment" data-src="img/reinvention_tree_2.png" style="height: 30vh"/>
+            </div>
+
+            <aside class="notes">
+                Come talk to me!
+                If you're an expert about this. If you thought this was boring. If you were playing candy crush.
+            </aside>
+        </section>
+
+        <section>
+            <h3>Syntax Trees Everywhere</h3>
+            <ul>
+                <li class="fragment">Interpreter</li>
+                <li class="fragment">Linters</li>
+                <li class="fragment">Refactoring</li>
+                <li class="fragment">'Transpiling': converting from one language to another</li>
+                <li class="fragment">Template engines</li>
+            </ul>
+
+            <aside class="notes" data-markdown>
+                I want to mention this as a motivation. It's nice to learn about syntax trees because they show up in so
+                many developer tools.
+                So: where else are ASTs used.
+
+                Interpreter: If you access the JavaScript AST and run it in Python, you have a JavaScript interpreter
+                written in Python.
+                You can also do a Python interpreter written in Python. That's one way of confusing people.
+
+                Linters: eslint in JavaScript, flake8 in Python.
+                formatters too: black uses the AST.
+
+                Transpiling: babel is an example in JavaScript to convert new syntax to older, compatible syntax. So we
+                can use the fancy new JavaScript features, and it converts the code back to an equivalent version taht
+                all browsers can understand.
+
+                Template engines: jinja2 is one example.
+
+                I think it's a fundamental concept, not because it is basic or simple - it's not - but because it powers
+                a lot of the tools we use.
+
+                And while it might be hard to write these tools - handling edge cases, different python versions... - ,
+                understanding the principles goes a long way.
+
+            </aside>
+        </section>
+
+
+        <section data-auto-animate data-auto-animate-duration="0">
+            <h3>Big picture: from source code to execution</h3>
+            <img class="fragment lifecycle__image" data-id="lifecycle-image"
+                 data-src="img/lifecycle/python-lifecycle-talk-1.svg">
+            <aside class="notes" data-markdown>
+                Before we focus on the AST, let's talk about a very high-level view of how Python code gets executed.
+                This is so that you have an idea of the big picture.
+                You can look into it if you're interested.
+
+                PRESS
+
+                Python starts by reading your code as text, presumably from a file.
+            </aside>
+        </section>
+        <section data-auto-animate data-auto-animate-duration="0">
+            <h3>Big picture: from source code to execution</h3>
+            <img data-id="lifecycle-image" class="lifecycle__image"
+                 data-src="img/lifecycle/python-lifecycle-talk-2.svg">
+            <aside class="notes" data-markdown>
+                Tokenizing: splitting the text in relevant words.
+                Parsing: taking these tokens and grouping them according to the Python grammar.
+                From there, construction of the Abstract Syntax Tree.
+
+                There is a parse tree intermediate step, but we're skipping it.
+            </aside>
+        </section>
+        <section data-auto-animate data-auto-animate-duration="0">
+            <h3>Big picture: from source code to execution</h3>
+            <img data-id="lifecycle-image" class="lifecycle__image"
+                 data-src="img/lifecycle/python-lifecycle-talk-3.svg">
+            <aside class="notes" data-markdown>
+                Then the AST is compiled to bytecode instructions.
+            </aside>
+        </section>
+        <section data-auto-animate data-auto-animate-duration="0">
+            <h3>Big picture: from source code to execution</h3>
+            <img data-id="lifecycle-image" class="lifecycle__image"
+                 data-src="img/lifecycle/python-lifecycle-talk-4.svg">
+            <aside class="notes" data-markdown>
+                We are going to focus on the AST part.
+                DONT WORRY TOO MUCH THOUGH if this is new to you and you're a bit confused here.
+
+                You can understand and use the Abstract Syntax Tree without looking at the other parts.
+
+                There are many big words on this slide.
+            </aside>
+        </section>
+
+        <section>
+            <div class="img-container">
+                <img style="height: 60vh" src="img/big_words_meme.jpeg"/>
+            </div>
+        </section>
+    </section>
+</div>
+
+<script src="dist/reveal.js"></script>
+<script src="plugin/notes/notes.js"></script>
+<script src="plugin/markdown/markdown.js"></script>
+<script src="plugin/highlight/highlight.js"></script>
+<script>
+  // More info about initialization & config:
+  // - https://revealjs.com/initialization/
+  // - https://revealjs.com/config/
+  Reveal.initialize({
+    hash: true,
+
+    // Learn about plugins: https://revealjs.com/plugins/
+    plugins: [RevealMarkdown, RevealHighlight, RevealNotes]
+  });
+</script>
+</body>
+</html>
